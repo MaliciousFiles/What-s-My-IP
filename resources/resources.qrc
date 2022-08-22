@@ -1,6 +1,5 @@
 <RCC>
     <qresource prefix="/fonts">
-        <file>Fragment Core.otf</file>
         <file>Fragment Core.ttf</file>
         <file>Hey Comic.ttf</file>
     </qresource>
