@@ -1,19 +1,28 @@
 #include <QtWidgets>
 #include <Qt>
 
-#include <iostream>
-#include <fstream>
+#include <cstdio>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <array>
+#include <regex>
 
 #include "mainwindow.h"
 
 MainWindow::MainWindow() :
         internalIP(new QLabel(QString::fromStdString(wrapIP(getPrivateIP())), this)),
-        externalIP(new QLabel(QString::fromStdString(wrapIP(getPublicIP())), this)) {
+        internalLabel(new QLabel("Local IP", this)),
+        externalIP(new QLabel(QString::fromStdString(wrapIP(getPublicIP())), this)),
+        externalLabel(new QLabel("Public IP", this)) {
     setMinimumSize(350, 150);
     setWindowTitle("What's My IP");
 
     formatIP(internalIP);
+    formatLabel(internalLabel);
+
     formatIP(externalIP);
+    formatLabel(externalLabel);
 
     setupLayout();
 }
@@ -21,18 +30,9 @@ MainWindow::MainWindow() :
 void MainWindow::setupLayout() {
     auto *layout = new QGridLayout();
 
-    Qt::Alignment alignment = Qt::AlignBottom | Qt::AlignHCenter;
-    QFont font = QFont("Hey Comic", 13);
-
-    auto internalLabel = new QLabel("Local IP", internalIP);
-    internalLabel->setAlignment(alignment);
-    internalLabel->setFont(font);
     layout->addWidget(internalLabel, 0, 0);
     layout->addWidget(internalIP, 1, 0);
 
-    auto externalLabel = new QLabel("External IP", internalIP);
-    externalLabel->setAlignment(alignment);
-    externalLabel->setFont(font);
     layout->addWidget(externalLabel, 0, 1);
     layout->addWidget(externalIP, 1, 1);
 
@@ -40,6 +40,11 @@ void MainWindow::setupLayout() {
 
     setCentralWidget(new QWidget);
     centralWidget()->setLayout(layout);
+}
+
+void MainWindow::formatLabel(QLabel* label) {
+    label->setAlignment(Qt::AlignBottom | Qt::AlignHCenter);
+    label->setFont(QFont("Hey Comic", 13));
 }
 
 void MainWindow::formatIP(QLabel* label) const {
@@ -52,9 +57,9 @@ void MainWindow::formatIP(QLabel* label) const {
 }
 
 void MainWindow::setClipboard(const QString& text) {
+    #ifdef Q_OS_WINDOWS
     if (GetOpenClipboardWindow() != nullptr) return;
-
-    std::cout << "clip\n";
+    #endif
 
     QClipboard* clipboard = QApplication::clipboard();
 
@@ -62,6 +67,17 @@ void MainWindow::setClipboard(const QString& text) {
 
     if (clipboard->supportsSelection()) {
         clipboard->setText(text, QClipboard::Selection);
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    if (event->oldSize().width() == -1 || event->oldSize().height() == -1) return;
+
+    float scale = (float) event->size().width() / (float) event->oldSize().width();
+    for (QLabel* label : {internalIP, internalLabel, externalIP, externalLabel}) {
+        QFont font = label->font();
+        font.setPointSizeF(font.pointSizeF() * scale);
+        label->setFont(font);
     }
 }
 
@@ -82,45 +98,38 @@ void MainWindow::keyPressEvent(QKeyEvent* event) {
 }
 
 std::string MainWindow::getPrivateIP() {
-    std::string outfile = "temp";
-
-    #ifdef Q_OS_WINDOWS
-    std::string out = getConsoleOutput(("powershell \"(Get-NetIPAddress | Where-Object {$_.AddressState -eq 'Preferred' -and $_.ValidLifetime -lt '24:00:00'}).IPAddress >> "+outfile+'"').c_str(), outfile.c_str()).substr(2);
-
-    std::size_t idx;
-    while ((idx = out.find('\000')) < out.length()) {
-        out.erase(idx, 1);
-    }
-
-    return out.erase(out.find('\n'), 1);
-    #elif Q_OS_UNIX || Q_OS_LINUX
-    return getConsoleOutput(("ip route get 1 | awk '{print $NF;exit}' >> "+outfile).c_str(), outfile.c_str());
-    #elif Q_OS_DARWIN || Q_OS_MACOS
-    return getConsoleOutput(("ipconfig getifaddr en0 >> "+outfile).c_str(), outfile.c_str());
+    #if defined(Q_OS_WINDOWS)
+    return getConsoleOutput("powershell \"(Get-NetIPAddress | Where-Object {$_.AddressState -eq 'Preferred' -and $_.ValidLifetime -lt '24:00:00'}).IPAddress\"");
+    #elif defined(Q_OS_DARWIN) || defined(Q_OS_MACOS)
+    return getConsoleOutput("ipconfig getifaddr en0");
+    #elif defined(Q_OS_UNIX) || defined(Q_OS_LINUX)
+    return getConsoleOutput("ip route get 1 | awk '{print $NF;exit}'");
     #endif
 }
 
 std::string MainWindow::getPublicIP() {
-    std::string outfile = "temp";
-
-    return getConsoleOutput(("curl --silent https://myexternalip.com/raw >> "+outfile).c_str(), outfile.c_str());
+    return getConsoleOutput("curl --silent https://myexternalip.com/raw");
 }
 
-std::string MainWindow::getConsoleOutput(const char* command, const char* outfile) {
-    system(command);
+std::string MainWindow::getConsoleOutput(const char *command) {
+    std::array<char, 128> buffer {};
 
-    std::ifstream file(outfile);
-    std::stringstream buf;
-    buf << file.rdbuf();
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command, "r"), pclose);
 
-    std::string out = buf.str();
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
 
-    file.close();
-    std::filesystem::remove(outfile);
-
-    return out;
+    std::string res;
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        res += buffer.data();
+    }
+    return res;
 }
 
 std::string MainWindow::wrapIP(const std::string& ip) {
-    return "<a style='text-decoration:none; color: inherit;' href='" + ip + "'>" + ip + "</a>";
+//    std::regex exp("\\.(?=[0-9])");
+//    std::string display = std::regex_replace(ip, exp, "<b style='font-size: 30;'>.</b>");
+
+    return "<a style='text-decoration: none; color: inherit;' href='" + ip + "'>" + ip + "</a>";
 }

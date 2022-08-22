@@ -8,7 +8,7 @@ int main(int argc, char *argv[]) {
     QApplication::setApplicationName("What's My IP");
     QApplication::setWindowIcon(QIcon(":/images/icon.png"));
 
-    QFontDatabase::addApplicationFont(":/fonts/Fragment Core.otf");
+    QFontDatabase::addApplicationFont(":/fonts/Fragment Core.ttf");
     QFontDatabase::addApplicationFont(":/fonts/Hey Comic.ttf");
 
     MainWindow main;

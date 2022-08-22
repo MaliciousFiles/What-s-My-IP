@@ -12,10 +12,13 @@ public:
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     QLabel* internalIP;
+    QLabel* internalLabel;
     QLabel* externalIP;
+    QLabel* externalLabel;
 
     static std::string getPrivateIP();
     static std::string getPublicIP();
@@ -23,8 +26,9 @@ private:
 
     void setupLayout();
     void formatIP(QLabel *label) const;
+    static void formatLabel(QLabel *label) ;
 
-    static std::string getConsoleOutput(const char* command, const char* outfile);
+    static std::string getConsoleOutput(const char *command);
 
 private slots:
     static void setClipboard(const QString& text);
