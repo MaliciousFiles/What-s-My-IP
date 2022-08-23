@@ -29,6 +29,7 @@ private:
 
     void formatIP(QLabel *label) const;
     static void formatLabel(QLabel *label);
+    void adjustCopiedLabelPos();
     void setCopiedLabelAlpha(int alpha);
     int getCopiedLabelAlpha();
 
@@ -36,5 +37,5 @@ private:
 
 private slots:
     void setClipboard(const QString& text);
-    void onFrame();
+    void adjustCopiedAlpha();
 };

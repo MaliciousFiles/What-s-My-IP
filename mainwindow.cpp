@@ -7,6 +7,7 @@
 #include <array>
 #include <regex>
 #include <iostream>
+#include <sstream>
 
 #include "mainwindow.h"
 
@@ -28,44 +29,52 @@ MainWindow::MainWindow() :
 
     instructionLabel->setFont(QFont("Hey Comic", 6));
     instructionLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    instructionLabel->setContentsMargins(1, 0, 0, 0);
+    instructionLabel->setContentsMargins(2, 0, 0, 0);
     instructionLabel->show();
 
-    copiedLabel->setFont(QFont("Fragment Core", 8));
-    copiedLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
-    copiedLabel->setContentsMargins(0, 5, 0, 0);
+    copiedLabel->setFont(QFont("Hey Comic", 13));
     copiedLabel->setTextFormat(Qt::RichText);
-    setCopiedLabelAlpha(50);
+    setCopiedLabelAlpha(0);
     copiedLabel->show();
 
     setupLayout();
 
     auto timer = new QTimer(this);
     timer->setTimerType(Qt::PreciseTimer);
-    timer->callOnTimeout(this, &MainWindow::onFrame);
-    timer->start(1);
+    timer->callOnTimeout(this, &MainWindow::adjustCopiedAlpha);
+    timer->start(6); // 1530ms (6*255) to totally disappear
 }
 
-void MainWindow::onFrame() {
+void MainWindow::adjustCopiedAlpha() {
     int alpha = getCopiedLabelAlpha();
 
     if (alpha > 0) {
-        setCopiedLabelAlpha(alpha - 0.05f); // will take 2 seconds to disappear (2000 * 0.0005 = 100)
+        setCopiedLabelAlpha(alpha - 1);
     }
 }
 
 void MainWindow::setCopiedLabelAlpha(int alpha) {
-//    copiedLabel->setStyleSheet(QString::fromStdString("{color: rgba(182, 252, 124, "+std::to_string(alpha)+")}"));
-    copiedLabel->setText(QString::fromStdString("<p style='color: rgba(182, 252, 124, "+std::to_string(alpha)+")'>Copied!</p>"));
+    std::stringstream stream;
+    stream << std::hex << alpha;
+    std::string hex = stream.str();
+    if (hex.length() == 1) hex = "0" + hex;
+
+    copiedLabel->setText(QString::fromStdString("<font color='#"+hex+"4cdb21'>Copied!</font>"));
 }
 
 int MainWindow::getCopiedLabelAlpha() {
-    std::regex exp("[0-9]{1,3}(?=\\))");
+    std::regex exp("[a-z0-9]{2}(?=[a-z0-9]{6})");
     const std::string s = copiedLabel->text().toStdString();
 
     std::smatch match;
     if (std::regex_search(s.begin(), s.end(), match, exp)) {
-        return std::stoi(match[0]);
+        int hex;
+        std::stringstream stream;
+
+        stream << std::hex << match[0];
+        stream >> hex;
+
+        return hex;
     }
 
     return -1;
@@ -80,7 +89,7 @@ void MainWindow::setupLayout() {
     layout->addWidget(externalLabel, 0, 1);
     layout->addWidget(externalIP, 1, 1);
 
-    layout->addItem(new QSpacerItem(0, QApplication::style()->pixelMetric(QStyle::PM_TitleBarHeight)), 2, 0);
+    layout->addItem(new QSpacerItem(0, QApplication::style()->pixelMetric(QStyle::PM_TitleBarHeight)/2), 2, 0);
 
     setCentralWidget(new QWidget);
     centralWidget()->setLayout(layout);
@@ -100,12 +109,25 @@ void MainWindow::formatIP(QLabel* label) const {
     QObject::connect(label, SIGNAL(linkActivated(QString)), this, SLOT(setClipboard(QString)));
 }
 
+static bool canClip = true;
+
 void MainWindow::setClipboard(const QString& text) {
     #ifdef Q_OS_WINDOWS
     if (GetOpenClipboardWindow() != nullptr) return;
     #endif
 
-//    setCopiedLabelAlpha(1);
+    if (!canClip) return;
+
+    canClip = false;
+
+    auto timer = new QTimer(this);
+    timer->setTimerType(Qt::PreciseTimer);
+    timer->setSingleShot(true);
+    timer->callOnTimeout(this, [&] {canClip = true;});
+    timer->start(1000); // 1s delay between copying
+
+    adjustCopiedLabelPos();
+    setCopiedLabelAlpha(255);
 
     QClipboard* clipboard = QApplication::clipboard();
 
@@ -116,18 +138,25 @@ void MainWindow::setClipboard(const QString& text) {
     }
 }
 
+void MainWindow::adjustCopiedLabelPos() {
+    copiedLabel->adjustSize();
+
+    copiedLabel->setGeometry((width()-copiedLabel->width())/2, (height()-copiedLabel->height())/6, copiedLabel->width(), copiedLabel->height());
+}
+
 void MainWindow::resizeEvent(QResizeEvent* event) {
     if (event->oldSize().width() == -1 || event->oldSize().height() == -1) return;
 
     float scale = (float) event->size().width() / (float) event->oldSize().width();
-    for (QLabel* label : {internalIP, internalLabel, externalIP, externalLabel, instructionLabel}) {
+    for (QLabel* label : {internalIP, internalLabel, externalIP, externalLabel, instructionLabel, copiedLabel}) {
         QFont font = label->font();
         font.setPointSizeF(font.pointSizeF() * scale);
         label->setFont(font);
     }
 
     instructionLabel->adjustSize();
-//    copiedLabel->adjustSize();
+
+    adjustCopiedLabelPos();
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event) {
@@ -183,8 +212,5 @@ std::string MainWindow::getConsoleOutput(const char *command) {
 }
 
 std::string MainWindow::wrapIP(const std::string& ip) {
-//    std::regex exp("\\.(?=[0-9])");
-//    std::string display = std::regex_replace(ip, exp, "<b style='font-size: 30;'>.</b>");
-
     return "<a style='text-decoration: none; color: inherit;' href='" + ip + "'>" + ip + "</a>";
 }
