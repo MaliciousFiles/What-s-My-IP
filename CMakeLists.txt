@@ -23,7 +23,10 @@ find_package(Qt6 COMPONENTS
 
 if (WIN32)
     set(app_icon_resource_windows "${CMAKE_CURRENT_SOURCE_DIR}/resources/whatsmyip.rc")
-    qt_add_executable(${PROJECT_NAME} WIN32 resources/resources.qrc main.cpp mainwindow.h mainwindow.cpp ${app_icon_resource_windows})
+    qt_add_executable(${PROJECT_NAME} resources/resources.qrc main.cpp mainwindow.h mainwindow.cpp ${app_icon_resource_windows})
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set_property(TARGET ${PROJECT_NAME} PROPERTY WIN32_EXECUTABLE true)
+    endif()
 elseif (APPLE)
     set(MACOSX_BUNDLE_ICON_FILE icon.icns)
 
